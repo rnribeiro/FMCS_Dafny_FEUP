@@ -6,6 +6,7 @@ method Partition(a: array<int>, s: int, l: int, X: int) returns (m: int, n: int)
   ensures forall i :: m <= i < n ==> a[i] == X
   ensures forall i :: n <= i < l ==> a[i] > X
   ensures forall i :: 0 <= i < s || l <= i < a.Length ==> old(a[i]) == a[i]
+  ensures multiset(a[..]) == old(multiset(a[..]))
 {
   m, n := s, s;
   var x := l;
@@ -16,6 +17,7 @@ method Partition(a: array<int>, s: int, l: int, X: int) returns (m: int, n: int)
     invariant forall i :: m <= i < n ==> a[i] == X
     invariant forall i :: x <= i < l ==> a[i] > X
     invariant forall i :: 0 <= i < s || l <= i < a.Length ==> old(a[i]) == a[i]
+    invariant multiset(a[..]) == old(multiset(a[..]))
   {
     if a[n] < X {
       a[m], a[n] := a[n], a[m];
