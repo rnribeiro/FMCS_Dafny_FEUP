@@ -34,8 +34,13 @@ method Partition(a: array<int>, s: int, l: int, X: int) returns (m: int, n: int)
 method Main() {
   var a := new int[10];
   a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9] := 5, 3, 7, 6, 2, 8, 1, 9, 4, 7;
+  assert a[0..] == [5, 3, 7, 6, 2, 8, 1, 9, 4, 7];
   var s, l, X := 3, 7, 6;
   var m, n := Partition(a, s, l, X);
+  assert (a[0..] == [5, 3, 7, 2, 1, 6, 8, 9, 4, 7] 
+       || a[0..] == [5, 3, 7, 1, 2, 6, 8, 9, 4, 7] 
+       || a[0..] == [5, 3, 7, 2, 1, 6, 9, 8, 4, 7]
+       || a[0..] == [5, 3, 7, 1, 2, 6, 9, 8, 4, 7]);
   assert m == 5;
   assert n == 6;
   print "m = ", m,", n = ", n, "\n";
@@ -44,7 +49,5 @@ method Main() {
   assert forall i | s <= i < m :: a[i] < X;
   assert forall i | m <= i < n :: a[i] == X;
   assert forall i | n <= i < l :: a[i] > X;
-  assert a[..] == [5, 3, 7, 2, 1, 6, 8, 9, 4, 7];
-  print a[..] == [5, 3, 7, 2, 1, 6, 8, 9, 4, 7];
 
 }
