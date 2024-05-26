@@ -22,7 +22,14 @@ method {:main} Main(ghost env:HostEnvironment?)
   var src_file_arg := HostConstants.GetCommandLineArg(2 as uint64, env);
   var dst_file_arg := HostConstants.GetCommandLineArg(3 as uint64, env);
 
-  // Convert command line arguments to char arrays/strings
+  // Convert command line arguments to appropriate types
+  var K_char_array := ConvertCharSeqToCharArray(num_arg[..]);
+  if !ValidKArgArray(K_char_array) {
+    print "Error: Invalid <number> argument.\n";
+    return;
+  }
+  var K := ConvertCharArrayToInt(K_char_array);
+
   var src_file := ConvertCharSeqToCharArray(src_file_arg[..]);
   var dst_file := ConvertCharSeqToCharArray(dst_file_arg[..]);
 
@@ -125,6 +132,38 @@ method {:main} Main(ghost env:HostEnvironment?)
 
   print "File copy successful.\n";
 }
+
+predicate ValidKArgArray(a: array<char>)
+reads a
+{
+  (forall i: int :: 0 <= i < a.Length ==> '0' <= a[i] <= '9')
+  &&
+  (a.Length == 1 ==> 0 < a[0] as int - 48 <= 9) 
+}
+
+/*
+Method to convert a array<char> to an integer
+The input array<char> contains ASCII encoded integers
+The output integer is the actual integer
+Example: 
+    a = ['1', '2', '3'] outputs b = 123
+    ASCII code for '1', '2', '3' are 49, 50, 51, respectively
+*/
+method ConvertCharArrayToInt(a: array<char>) returns (b: int)
+requires ValidKArgArray(a)
+{
+    var temp: seq<int> := [];
+    // Convert K char array to int
+    for i := 0 to a.Length {
+      temp := temp + [a[i] as int - 48];
+    }
+    var K_int := 0;
+    for i := 0 to |temp| {
+      K_int := K_int * 10 + temp[i];
+    }
+    b := K_int;
+}
+
 
 /* 
 Method to convert a array<byte> to a array<int>
