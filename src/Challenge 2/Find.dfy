@@ -7,7 +7,7 @@ method FindKSmallest(A: array<int>, K: int) returns (s: int, l: int, done: bool)
   ensures forall i, j :: 0 <= i < s && s <= j < A.Length ==> A[i] < A[j]
   ensures forall i, j :: 0 <= i < l && l <= j < A.Length ==> A[i] < A[j]
   ensures done ==> forall i, j :: s <= i < l && s <= j < l ==> A[i] == A[j]
-  // ensures done ==> forall i, j :: 0 <= i < K && K <= j < A.Length ==> A[i] <= A[j]
+  ensures done ==> forall i, j :: 0 <= i < K && K <= j < A.Length ==> A[i] <= A[j]
   ensures multiset(A[..]) == old(multiset(A[..]))
 
 {
@@ -32,107 +32,6 @@ method FindKSmallest(A: array<int>, K: int) returns (s: int, l: int, done: bool)
     } else if K <= m {
       l := m;
     }
-
   }
 
 }
-
-// method Main() {
-//   var A := new int[10];
-//   A[0], A[1], A[2], A[3], A[4], A[5], A[6], A[7], A[8], A[9] := 5, 3, 7, 6, 2, 8, 1, 9, 4, 7;
-//   assert A[0..] == [5, 3, 7, 6, 2, 8, 1, 9, 4, 7];
-//   print "Final array: ", A[..], "\n";
-//   var K := 5;
-//   var s, l := 0, A.Length;
-
-//   var m, n := Partition(A, s, l, A[K-1]);
-//   print "m = ", m,", n = ", n, "\n";
-//   print "Final array: ", A[..], "\n";
-//   if n < K {
-//     s := n;
-//   } else if m < K <= n {
-//     s, l := m, n;
-//   } else if K <= m {
-//     l := m;
-//   }
-
-//   m, n := Partition(A, s, l, A[K-1]);
-//   print "m = ", m,", n = ", n, "\n";
-//   print "Final array: ", A[..], "\n";
-//   if n < K {
-//     s := n;
-//   } else if m < K <= n {
-//     s, l := m, n;
-//   } else if K <= m {
-//     l := m;
-//   }
-
-//   m, n := Partition(A, s, l, A[K-1]);
-//   print "m = ", m,", n = ", n, "\n";
-//   print "Final array: ", A[..], "\n";
-//   if n < K {
-//     s := n;
-//   } else if m < K <= n {
-//     s, l := m, n;
-//   } else if K <= m {
-//     l := m;
-//   }
-
-//   m, n := Partition(A, s, l, A[K-1]);
-//   print "m = ", m,", n = ", n, "\n";
-//   print "Final array: ", A[..], "\n";
-//   if n < K {
-//     s := n;
-//   } else if m < K <= n {
-//     s, l := m, n;
-//   } else if K <= m {
-//     l := m;
-//   }
-
-//   m, n := Partition(A, s, l, A[K-1]);
-//   print "m = ", m,", n = ", n, "\n";
-//   print "Final array: ", A[..], "\n";
-//   if n < K {
-//     s := n;
-//   } else if m < K <= n {
-//     s, l := m, n;
-//   } else if K <= m {
-//     l := m;
-//   }
-
-
-//   m, n := Partition(A, s, l, A[K-1]);
-//   print "m = ", m,", n = ", n, "\n";
-//   print "Final array: ", A[..], "\n";
-//   if n < K {
-//     s := n;
-//   } else if m < K <= n {
-//     s, l := m, n;
-//   } else if K <= m {
-//     l := m;
-//   }
-
-//   m, n := Partition(A, s, l, A[K-1]);
-//   print "m = ", m,", n = ", n, "\n";
-//   print "Final array: ", A[..], "\n";
-//   if n < K {
-//     s := n;
-//   } else if m < K <= n {
-//     s, l := m, n;
-//   } else if K <= m {
-//     l := m;
-//   }
-
-//   m, n := Partition(A, s, l, A[K-1]);
-//   print "m = ", m,", n = ", n, "\n";
-//   print "Final array: ", A[..], "\n";
-//   if n < K {
-//     s := n;
-//   } else if m < K <= n {
-//     s, l := m, n;
-//   } else if K <= m {
-//     l := m;
-//   }
-
-
-// }
