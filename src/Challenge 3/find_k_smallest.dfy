@@ -6,6 +6,7 @@
  */
 
 include "Io.dfy"
+include "../Challenge 2/Find.dfy"
 
 method {:main} Main(ghost env:HostEnvironment?)
   requires env != null && env.Valid() && env.ok.ok()
@@ -100,7 +101,8 @@ method {:main} Main(ghost env:HostEnvironment?)
 
   // // - Third step -
   // // Apply method from Challenge 2
-  // TODO: Call the method to find the Kth smallest number and reorder the array accordingly
+
+  // numbers := FindKthSmallest(numbers, K);
 
 
   // - Forth and final step -
@@ -117,7 +119,7 @@ method {:main} Main(ghost env:HostEnvironment?)
   // Convert src_array to array<byte>
   var numbersByteArray := ConvertIntArrayToByteArray(numbers);
 
-  // Ensure dst_buffer.Length is within the range of int32
+  // Ensure numbersByteArray.Length is within the range of int32
   if numbersByteArray.Length > 0x7FFFFFFF  {
     print "Error: Destination file size is too large.\n";
     return;
