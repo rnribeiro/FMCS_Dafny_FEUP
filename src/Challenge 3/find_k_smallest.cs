@@ -9,46 +9,8 @@ using System;
 using System.Numerics;
 using System.Collections;
 [assembly: DafnyAssembly.DafnySourceAttribute(@"// dafny 4.6.0.0
-// Command-line arguments: build find_k_smallest.dfy IoNative.cs --unicode-char false
+// Command-line arguments: build .\find_k_smallest.dfy .\IoNative.cs --unicode-char false
 // find_k_smallest.dfy
-
-function IsInteger(chars: array<char>): bool
-  reads chars
-  decreases {chars}, chars
-{
-  forall i: int {:trigger chars[i]} :: 
-    (0 <= i < chars.Length ==>
-      '0' <= chars[i]) &&
-    (0 <= i < chars.Length ==>
-      chars[i] <= '9')
-}
-
-method CharArrayToInt(arr: array<char>) returns (n: int)
-  requires IsInteger(arr)
-  decreases arr
-{
-  var k := 0;
-  var mult := 1;
-  var i := arr.Length - 1;
-  while i >= 0
-    decreases i - 0
-  {
-    k := k + (arr[i] as int - '0' as int) * mult;
-    mult := mult * 10;
-    i := i - 1;
-  }
-  return k;
-}
-
-method ByteArrayToIntArray(a: array<byte>) returns (b: array<int32>)
-  ensures b.Length == a.Length
-  decreases a
-{
-  b := new int32[a.Length];
-  for i: int := 0 to a.Length {
-    b[i] := a[i] as int32 - 48;
-  }
-}
 
 method {:main} Main(ghost env: HostEnvironment?, _noArgsParameter: seq<seq<char>>)
   requires env != null && env.Valid() && env.ok.ok()
@@ -57,57 +19,268 @@ method {:main} Main(ghost env: HostEnvironment?, _noArgsParameter: seq<seq<char>
 {
   var numArgs := HostConstants.NumCommandLineArgs(env);
   if numArgs != 4 {
-    print ""Error: Wrong number of arguments!\nUsage: number sourceFile destFile"";
+    print ""Error: Wrong number of arguments!\nUsage: dotnet find_k_smallest.dll <number> <sourcefile> <destinationfile>\n"";
     return;
   }
   var argNumber := HostConstants.GetCommandLineArg(1, env);
+  var sourceFile := HostConstants.GetCommandLineArg(2, env);
+  var destFile := HostConstants.GetCommandLineArg(3, env);
   if !IsInteger(argNumber) {
-    print ""Error: Wrong argument type! Argument 1 must be of type int!\nUsage: number sourceFile destFile"";
+    print ""Error: Wrong argument type! Argument 1 must be of type int!\nUsage: number sourceFile destFile\n"";
     return;
   }
-  var number: int := CharArrayToInt(argNumber);
-  var sourceFile := HostConstants.GetCommandLineArg(2, env);
+  var K := ConvertCharArrayToInt(argNumber);
   var sourceFileExists := FileStream.FileExists(sourceFile, env);
   if !sourceFileExists {
-    print ""Error: Source file does not exist!"";
+    print ""Error: Source file does not exist!\n"";
     return;
   }
-  var destFile := HostConstants.GetCommandLineArg(3, env);
   var destFileExists := FileStream.FileExists(destFile, env);
   if destFileExists {
-    print ""Error: Destination file already exists!"";
+    print ""Error: Destination file already exists.\n"";
     return;
   }
   var ok: bool;
   var sourceFileStream: FileStream?;
   ok, sourceFileStream := FileStream.Open(sourceFile, env);
   if !ok {
-    print ""Error: Could not open source file!"";
+    print ""Error: Could not open source file!\n"";
     return;
   }
-  var len: int32;
-  ok, len := FileStream.FileLength(sourceFile, env);
+  var success_len, src_len := FileStream.FileLength(sourceFile, env);
+  if !success_len {
+    print ""Error: Unable to determine source file length.\n"";
+    return;
+  }
+  if src_len == 0 {
+    print ""Error: Source file is empty.\n"";
+    return;
+  }
+  var src_buffer := new byte[src_len];
+  ok := sourceFileStream.Read(0 as nat32, src_buffer, 0, src_len);
   if !ok {
-    print ""Error: Could not get the length of the source file!"";
+    print ""Error: Unable to read from source file.\n"";
     return;
   }
-  var buffer := new byte[len];
-  ok := sourceFileStream.Read(0, buffer, 0, len);
-  if !ok {
-    print ""Error: Could not read from source file!"";
+  if src_buffer.Length == 0 {
+    print ""Error: Source file is empty.\n"";
     return;
   }
-  var numbers := ByteArrayToIntArray(buffer);
+  var numbers := ConvertByteArrayToIntArray(src_buffer);
   ok := sourceFileStream.Close();
   if !ok {
-    print ""Error: Could not close source file!"";
+    print ""Error: Unable to close source file.\n"";
     return;
   }
   var destFileStream: FileStream?;
   ok, destFileStream := FileStream.Open(destFile, env);
   if !ok {
-    print ""Error: Could not create destination file!"";
+    print ""Error: Could not create destination file!\n"";
     return;
+  }
+  var numbersByteArray := ConvertIntArrayToByteArray(numbers);
+  if numbersByteArray.Length > 2147483647 {
+    print ""Error: Destination file size is too large.\n"";
+    return;
+  }
+  if numbersByteArray.Length == 0 {
+    print ""Error: Empty output.\n"";
+    return;
+  }
+  ok := destFileStream.Write(0, numbersByteArray, 0, numbersByteArray.Length as int32);
+  if !ok {
+    print ""Error: Could not write to destination file!\n"";
+    return;
+  }
+  ok := destFileStream.Close();
+  if !ok {
+    print ""Error: Could not close destination file!\n"";
+    return;
+  }
+  print ""File copy successful.\n"";
+}
+
+predicate IsInteger(chars: array<char>)
+  reads chars
+  decreases {chars}, chars
+{
+  (forall i: int {:trigger chars[i]} :: 
+    (0 <= i < chars.Length ==>
+      '0' <= chars[i]) &&
+    (0 <= i < chars.Length ==>
+      chars[i] <= '9')) &&
+  (chars.Length == 1 ==>
+    0 < chars[0] as int - 48 <= 9)
+}
+
+method ConvertCharArrayToInt(a: array<char>) returns (b: int)
+  requires IsInteger(a)
+  decreases a
+{
+  var temp: seq<int> := [];
+  for i: int := 0 to a.Length {
+    temp := temp + [a[i] as int - 48];
+  }
+  b := ConvertDigitsSeqToInt(temp);
+}
+
+method ConvertDigitsSeqToInt(s: seq<int>) returns (b: int)
+  decreases s
+{
+  var num := 0;
+  for i: int := 0 to |s| {
+    num := num * 10 + s[i];
+  }
+  b := num;
+}
+
+method ConvertByteArrayToIntArray(a: array<byte>) returns (b: array<int>)
+  decreases a
+{
+  var temp: seq<int> := [];
+  var result: seq<int> := [];
+  for i: int := 0 to a.Length {
+    var number := a[i] as int - 48;
+    if number >= 0 && number <= 9 {
+      temp := temp + [number];
+    } else {
+      if |temp| > 0 {
+        var num := ConvertDigitsSeqToInt(temp);
+        result := result + [num];
+        temp := [];
+      }
+    }
+  }
+  if |temp| > 0 {
+    var num := ConvertDigitsSeqToInt(temp);
+    result := result + [num];
+    temp := [];
+  }
+  b := ConvertIntSeqToIntArray(result);
+  return b;
+}
+
+method ConvertIntToByteSeq(a: int) returns (b: seq<byte>)
+  decreases a
+{
+  var digits: seq<byte> := [];
+  var num := a;
+  while num > 0
+    decreases num - 0
+  {
+    digits := [(num % 10) as byte + 48 as byte] + digits;
+    num := num / 10;
+  }
+  return digits;
+}
+
+method ConvertIntArrayToByteArray(a: array<int>) returns (b: array<byte>)
+  decreases a
+{
+  var temp: seq<byte> := [];
+  for i: int := 0 to a.Length {
+    var num := a[i];
+    if num == 0 {
+      temp := temp + [48 as byte];
+    } else {
+      var digits := ConvertIntToByteSeq(num);
+      temp := temp + digits;
+      if i != a.Length - 1 {
+        temp := temp + [13 as byte] + [10 as byte];
+      }
+    }
+  }
+  b := ConvertByteSeqToByteArray(temp);
+  return b;
+}
+
+method ConvertByteSeqToByteArray(s: seq<byte>) returns (a: array<byte>)
+  ensures a.Length == |s|
+  decreases s
+{
+  a := new byte[|s|];
+  for i: int := 0 to |s| {
+    a[i] := s[i];
+  }
+  return a;
+}
+
+method ConvertIntSeqToIntArray(s: seq<int>) returns (a: array<int>)
+  ensures a.Length == |s|
+  decreases s
+{
+  a := new int[|s|];
+  for i: int := 0 to |s| {
+    a[i] := s[i];
+  }
+  return a;
+}
+
+method FindKSmallest(A: array<int>, K: int)
+    returns (s: int, l: int, done: bool)
+  requires 1 <= K <= A.Length
+  modifies A
+  ensures 0 <= s < K <= l <= A.Length
+  ensures forall i: int, j: int {:trigger A[j], A[i]} :: 0 <= i < s && s <= j < A.Length ==> A[i] < A[j]
+  ensures forall i: int, j: int {:trigger A[j], A[i]} :: 0 <= i < l && l <= j < A.Length ==> A[i] < A[j]
+  ensures done ==> forall i: int, j: int {:trigger A[j], A[i]} :: s <= i < l && s <= j < l ==> A[i] == A[j]
+  ensures done ==> forall i: int, j: int {:trigger A[j], A[i]} :: 0 <= i < K && K <= j < A.Length ==> A[i] <= A[j]
+  ensures multiset(A[..]) == old(multiset(A[..]))
+  decreases A, K
+{
+  s, l, done := 0, A.Length, A.Length <= 1;
+  while !done
+    invariant 0 <= s < K <= l <= A.Length
+    invariant forall i: int, j: int {:trigger A[j], A[i]} :: 0 <= i < s && s <= j < A.Length ==> A[i] < A[j]
+    invariant forall i: int, j: int {:trigger A[j], A[i]} :: 0 <= i < l && l <= j < A.Length ==> A[i] < A[j]
+    invariant done ==> forall i: int, j: int {:trigger A[j], A[i]} :: s <= i < l && s <= j < l ==> A[i] == A[j]
+    invariant multiset(A[..]) == old(multiset(A[..]))
+    decreases l - s, !done
+  {
+    var X := A[K - 1];
+    var m, n := Partition(A, s, l, X);
+    if n < K {
+      s := n;
+    } else if m < K <= n {
+      s, l, done := m, n, true;
+    } else if K <= m {
+      l := m;
+    }
+  }
+}
+
+method Partition(A: array<int>, s: int, l: int, X: int)
+    returns (m: int, n: int)
+  requires 0 <= s <= l <= A.Length
+  modifies A
+  ensures 0 <= s <= m <= n <= l <= A.Length
+  ensures forall i: int {:trigger A[i]} :: s <= i < m ==> A[i] < X
+  ensures forall i: int {:trigger A[i]} :: m <= i < n ==> A[i] == X
+  ensures forall i: int {:trigger A[i]} :: n <= i < l ==> A[i] > X
+  ensures forall i: int {:trigger A[i]} {:trigger old(A[i])} :: 0 <= i < s || l <= i < A.Length ==> old(A[i]) == A[i]
+  ensures multiset(A[..]) == old(multiset(A[..]))
+  decreases l - s
+{
+  m, n := s, s;
+  var x := l;
+  while n < x
+    invariant s <= m <= n <= x <= l
+    invariant forall i: int {:trigger A[i]} :: s <= i < m ==> A[i] < X
+    invariant forall i: int {:trigger A[i]} :: m <= i < n ==> A[i] == X
+    invariant forall i: int {:trigger A[i]} :: x <= i < l ==> A[i] > X
+    invariant forall i: int {:trigger A[i]} {:trigger old(A[i])} :: 0 <= i < s || l <= i < A.Length ==> old(A[i]) == A[i]
+    invariant multiset(A[..]) == old(multiset(A[..]))
+    decreases x - n
+  {
+    if A[n] < X {
+      A[m], A[n] := A[n], A[m];
+      m, n := m + 1, n + 1;
+    } else if A[n] == X {
+      n := n + 1;
+    } else {
+      x := x - 1;
+      A[n], A[x] := A[x], A[n];
+    }
   }
 }
 
@@ -5936,138 +6109,354 @@ internal static class FuncExtensions {
 namespace _module {
 
   public partial class __default {
-    public static bool IsInteger(char[] chars) {
-      return Dafny.Helpers.Id<Func<char[], bool>>((_0_chars) => Dafny.Helpers.Quantifier<BigInteger>(Dafny.Helpers.IntegerRange(BigInteger.Zero, new BigInteger((_0_chars).Length)), true, (((_forall_var_0) => {
-        BigInteger _1_i = (BigInteger)_forall_var_0;
-        return !(((_1_i).Sign != -1) && ((_1_i) < (new BigInteger((_0_chars).Length)))) || ((('0') <= ((_0_chars)[(int)(_1_i)])) && (((_0_chars)[(int)(_1_i)]) <= ('9')));
-      }))))(chars);
-    }
-    public static BigInteger CharArrayToInt(char[] arr)
-    {
-      BigInteger n = BigInteger.Zero;
-      BigInteger _2_k;
-      _2_k = BigInteger.Zero;
-      BigInteger _3_mult;
-      _3_mult = BigInteger.One;
-      BigInteger _4_i;
-      _4_i = (new BigInteger((arr).Length)) - (BigInteger.One);
-      while ((_4_i).Sign != -1) {
-        _2_k = (_2_k) + (((new BigInteger((arr)[(int)(_4_i)])) - (new BigInteger('0'))) * (_3_mult));
-        _3_mult = (_3_mult) * (new BigInteger(10));
-        _4_i = (_4_i) - (BigInteger.One);
-      }
-      n = _2_k;
-      return n;
-      return n;
-    }
-    public static int[] ByteArrayToIntArray(byte[] a)
-    {
-      int[] b = new int[0];
-      int[] _nw0 = new int[Dafny.Helpers.ToIntChecked(new BigInteger((a).Length), "array size exceeds memory limit")];
-      b = _nw0;
-      BigInteger _hi0 = new BigInteger((a).Length);
-      for (BigInteger _5_i = BigInteger.Zero; _5_i < _hi0; _5_i++) {
-        (b)[(int)((_5_i))] = ((int)((a)[(int)(_5_i)])) - (48);
-      }
-      return b;
-    }
     public static void _Main(Dafny.ISequence<Dafny.ISequence<char>> __noArgsParameter)
     {
-      uint _6_numArgs;
+      uint _0_numArgs;
       uint _out0;
       _out0 = HostConstants.NumCommandLineArgs();
-      _6_numArgs = _out0;
-      if ((_6_numArgs) != (4U)) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Wrong number of arguments!\nUsage: number sourceFile destFile")));
+      _0_numArgs = _out0;
+      if ((_0_numArgs) != (4U)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Wrong number of arguments!\nUsage: dotnet find_k_smallest.dll <number> <sourcefile> <destinationfile>\n")));
         return ;
       }
-      char[] _7_argNumber;
+      char[] _1_argNumber;
       char[] _out1;
       _out1 = HostConstants.GetCommandLineArg(1UL);
-      _7_argNumber = _out1;
-      if (!(__default.IsInteger(_7_argNumber))) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Wrong argument type! Argument 1 must be of type int!\nUsage: number sourceFile destFile")));
-        return ;
-      }
-      BigInteger _8_number;
-      BigInteger _out2;
-      _out2 = __default.CharArrayToInt(_7_argNumber);
-      _8_number = _out2;
-      char[] _9_sourceFile;
+      _1_argNumber = _out1;
+      char[] _2_sourceFile;
+      char[] _out2;
+      _out2 = HostConstants.GetCommandLineArg(2UL);
+      _2_sourceFile = _out2;
+      char[] _3_destFile;
       char[] _out3;
-      _out3 = HostConstants.GetCommandLineArg(2UL);
-      _9_sourceFile = _out3;
-      bool _10_sourceFileExists;
-      bool _out4;
-      _out4 = FileStream.FileExists(_9_sourceFile);
-      _10_sourceFileExists = _out4;
-      if (!(_10_sourceFileExists)) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Source file does not exist!")));
+      _out3 = HostConstants.GetCommandLineArg(3UL);
+      _3_destFile = _out3;
+      if (!(__default.IsInteger(_1_argNumber))) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Wrong argument type! Argument 1 must be of type int!\nUsage: number sourceFile destFile\n")));
         return ;
       }
-      char[] _11_destFile;
-      char[] _out5;
-      _out5 = HostConstants.GetCommandLineArg(3UL);
-      _11_destFile = _out5;
-      bool _12_destFileExists;
+      BigInteger _4_K;
+      BigInteger _out4;
+      _out4 = __default.ConvertCharArrayToInt(_1_argNumber);
+      _4_K = _out4;
+      bool _5_sourceFileExists;
+      bool _out5;
+      _out5 = FileStream.FileExists(_2_sourceFile);
+      _5_sourceFileExists = _out5;
+      if (!(_5_sourceFileExists)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Source file does not exist!\n")));
+        return ;
+      }
+      bool _6_destFileExists;
       bool _out6;
-      _out6 = FileStream.FileExists(_11_destFile);
-      _12_destFileExists = _out6;
-      if (_12_destFileExists) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Destination file already exists!")));
+      _out6 = FileStream.FileExists(_3_destFile);
+      _6_destFileExists = _out6;
+      if (_6_destFileExists) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Destination file already exists.\n")));
         return ;
       }
-      bool _13_ok = false;
-      FileStream _14_sourceFileStream = ((FileStream)null);
+      bool _7_ok = false;
+      FileStream _8_sourceFileStream = ((FileStream)null);
       bool _out7;
       FileStream _out8;
-      FileStream.Open(_9_sourceFile, out _out7, out _out8);
-      _13_ok = _out7;
-      _14_sourceFileStream = _out8;
-      if (!(_13_ok)) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Could not open source file!")));
+      FileStream.Open(_2_sourceFile, out _out7, out _out8);
+      _7_ok = _out7;
+      _8_sourceFileStream = _out8;
+      if (!(_7_ok)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Could not open source file!\n")));
         return ;
       }
-      int _15_len = 0;
+      bool _9_success__len;
+      int _10_src__len;
       bool _out9;
       int _out10;
-      FileStream.FileLength(_9_sourceFile, out _out9, out _out10);
-      _13_ok = _out9;
-      _15_len = _out10;
-      if (!(_13_ok)) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Could not get the length of the source file!")));
+      FileStream.FileLength(_2_sourceFile, out _out9, out _out10);
+      _9_success__len = _out9;
+      _10_src__len = _out10;
+      if (!(_9_success__len)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Unable to determine source file length.\n")));
         return ;
       }
-      byte[] _16_buffer;
-      byte[] _nw1 = new byte[Dafny.Helpers.ToIntChecked(_15_len, "array size exceeds memory limit")];
-      _16_buffer = _nw1;
+      if ((_10_src__len) == (0)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Source file is empty.\n")));
+        return ;
+      }
+      byte[] _11_src__buffer;
+      byte[] _nw0 = new byte[Dafny.Helpers.ToIntChecked(_10_src__len, "array size exceeds memory limit")];
+      _11_src__buffer = _nw0;
       bool _out11;
-      _out11 = (_14_sourceFileStream).Read(0, _16_buffer, 0, _15_len);
-      _13_ok = _out11;
-      if (!(_13_ok)) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Could not read from source file!")));
+      _out11 = (_8_sourceFileStream).Read((int)(0), _11_src__buffer, 0, _10_src__len);
+      _7_ok = _out11;
+      if (!(_7_ok)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Unable to read from source file.\n")));
         return ;
       }
-      int[] _17_numbers;
-      int[] _out12;
-      _out12 = __default.ByteArrayToIntArray(_16_buffer);
-      _17_numbers = _out12;
+      if ((new BigInteger((_11_src__buffer).Length)).Sign == 0) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Source file is empty.\n")));
+        return ;
+      }
+      BigInteger[] _12_numbers;
+      BigInteger[] _out12;
+      _out12 = __default.ConvertByteArrayToIntArray(_11_src__buffer);
+      _12_numbers = _out12;
       bool _out13;
-      _out13 = (_14_sourceFileStream).Close();
-      _13_ok = _out13;
-      if (!(_13_ok)) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Could not close source file!")));
+      _out13 = (_8_sourceFileStream).Close();
+      _7_ok = _out13;
+      if (!(_7_ok)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Unable to close source file.\n")));
         return ;
       }
-      FileStream _18_destFileStream = ((FileStream)null);
+      FileStream _13_destFileStream = ((FileStream)null);
       bool _out14;
       FileStream _out15;
-      FileStream.Open(_11_destFile, out _out14, out _out15);
-      _13_ok = _out14;
-      _18_destFileStream = _out15;
-      if (!(_13_ok)) {
-        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Could not create destination file!")));
+      FileStream.Open(_3_destFile, out _out14, out _out15);
+      _7_ok = _out14;
+      _13_destFileStream = _out15;
+      if (!(_7_ok)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Could not create destination file!\n")));
         return ;
+      }
+      byte[] _14_numbersByteArray;
+      byte[] _out16;
+      _out16 = __default.ConvertIntArrayToByteArray(_12_numbers);
+      _14_numbersByteArray = _out16;
+      if ((new BigInteger((_14_numbersByteArray).Length)) > (new BigInteger(2147483647))) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Destination file size is too large.\n")));
+        return ;
+      }
+      if ((new BigInteger((_14_numbersByteArray).Length)).Sign == 0) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Empty output.\n")));
+        return ;
+      }
+      bool _out17;
+      _out17 = (_13_destFileStream).Write(0, _14_numbersByteArray, 0, (int)(_14_numbersByteArray).Length);
+      _7_ok = _out17;
+      if (!(_7_ok)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Could not write to destination file!\n")));
+        return ;
+      }
+      bool _out18;
+      _out18 = (_13_destFileStream).Close();
+      _7_ok = _out18;
+      if (!(_7_ok)) {
+        Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("Error: Could not close destination file!\n")));
+        return ;
+      }
+      Dafny.Helpers.Print((Dafny.Sequence<char>.FromString("File copy successful.\n")));
+    }
+    public static bool IsInteger(char[] chars) {
+      return (Dafny.Helpers.Id<Func<char[], bool>>((_15_chars) => Dafny.Helpers.Quantifier<BigInteger>(Dafny.Helpers.IntegerRange(BigInteger.Zero, new BigInteger((_15_chars).Length)), true, (((_forall_var_0) => {
+        BigInteger _16_i = (BigInteger)_forall_var_0;
+        return !(((_16_i).Sign != -1) && ((_16_i) < (new BigInteger((_15_chars).Length)))) || ((('0') <= ((_15_chars)[(int)(_16_i)])) && (((_15_chars)[(int)(_16_i)]) <= ('9')));
+      }))))(chars)) && (!((new BigInteger((chars).Length)) == (BigInteger.One)) || ((((new BigInteger((chars)[(int)(BigInteger.Zero)])) - (new BigInteger(48))).Sign == 1) && (((new BigInteger((chars)[(int)(BigInteger.Zero)])) - (new BigInteger(48))) <= (new BigInteger(9)))));
+    }
+    public static BigInteger ConvertCharArrayToInt(char[] a)
+    {
+      BigInteger b = BigInteger.Zero;
+      Dafny.ISequence<BigInteger> _17_temp;
+      _17_temp = Dafny.Sequence<BigInteger>.FromElements();
+      BigInteger _hi0 = new BigInteger((a).Length);
+      for (BigInteger _18_i = BigInteger.Zero; _18_i < _hi0; _18_i++) {
+        _17_temp = Dafny.Sequence<BigInteger>.Concat(_17_temp, Dafny.Sequence<BigInteger>.FromElements((new BigInteger((a)[(int)(_18_i)])) - (new BigInteger(48))));
+      }
+      BigInteger _out19;
+      _out19 = __default.ConvertDigitsSeqToInt(_17_temp);
+      b = _out19;
+      return b;
+    }
+    public static BigInteger ConvertDigitsSeqToInt(Dafny.ISequence<BigInteger> s)
+    {
+      BigInteger b = BigInteger.Zero;
+      BigInteger _19_num;
+      _19_num = BigInteger.Zero;
+      BigInteger _hi1 = new BigInteger((s).Count);
+      for (BigInteger _20_i = BigInteger.Zero; _20_i < _hi1; _20_i++) {
+        _19_num = ((_19_num) * (new BigInteger(10))) + ((s).Select(_20_i));
+      }
+      b = _19_num;
+      return b;
+    }
+    public static BigInteger[] ConvertByteArrayToIntArray(byte[] a)
+    {
+      BigInteger[] b = new BigInteger[0];
+      Dafny.ISequence<BigInteger> _21_temp;
+      _21_temp = Dafny.Sequence<BigInteger>.FromElements();
+      Dafny.ISequence<BigInteger> _22_result;
+      _22_result = Dafny.Sequence<BigInteger>.FromElements();
+      BigInteger _hi2 = new BigInteger((a).Length);
+      for (BigInteger _23_i = BigInteger.Zero; _23_i < _hi2; _23_i++) {
+        BigInteger _24_number;
+        _24_number = (new BigInteger((a)[(int)(_23_i)])) - (new BigInteger(48));
+        if (((_24_number).Sign != -1) && ((_24_number) <= (new BigInteger(9)))) {
+          _21_temp = Dafny.Sequence<BigInteger>.Concat(_21_temp, Dafny.Sequence<BigInteger>.FromElements(_24_number));
+        } else {
+          if ((new BigInteger((_21_temp).Count)).Sign == 1) {
+            BigInteger _25_num;
+            BigInteger _out20;
+            _out20 = __default.ConvertDigitsSeqToInt(_21_temp);
+            _25_num = _out20;
+            _22_result = Dafny.Sequence<BigInteger>.Concat(_22_result, Dafny.Sequence<BigInteger>.FromElements(_25_num));
+            _21_temp = Dafny.Sequence<BigInteger>.FromElements();
+          }
+        }
+      }
+      if ((new BigInteger((_21_temp).Count)).Sign == 1) {
+        BigInteger _26_num;
+        BigInteger _out21;
+        _out21 = __default.ConvertDigitsSeqToInt(_21_temp);
+        _26_num = _out21;
+        _22_result = Dafny.Sequence<BigInteger>.Concat(_22_result, Dafny.Sequence<BigInteger>.FromElements(_26_num));
+        _21_temp = Dafny.Sequence<BigInteger>.FromElements();
+      }
+      BigInteger[] _out22;
+      _out22 = __default.ConvertIntSeqToIntArray(_22_result);
+      b = _out22;
+      b = b;
+      return b;
+      return b;
+    }
+    public static Dafny.ISequence<byte> ConvertIntToByteSeq(BigInteger a)
+    {
+      Dafny.ISequence<byte> b = Dafny.Sequence<byte>.Empty;
+      Dafny.ISequence<byte> _27_digits;
+      _27_digits = Dafny.Sequence<byte>.FromElements();
+      BigInteger _28_num;
+      _28_num = a;
+      while ((_28_num).Sign == 1) {
+        _27_digits = Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.FromElements((byte)(((byte)(Dafny.Helpers.EuclideanModulus(_28_num, new BigInteger(10)))) + ((byte)(48)))), _27_digits);
+        _28_num = Dafny.Helpers.EuclideanDivision(_28_num, new BigInteger(10));
+      }
+      b = _27_digits;
+      return b;
+      return b;
+    }
+    public static byte[] ConvertIntArrayToByteArray(BigInteger[] a)
+    {
+      byte[] b = new byte[0];
+      Dafny.ISequence<byte> _29_temp;
+      _29_temp = Dafny.Sequence<byte>.FromElements();
+      BigInteger _hi3 = new BigInteger((a).Length);
+      for (BigInteger _30_i = BigInteger.Zero; _30_i < _hi3; _30_i++) {
+        BigInteger _31_num;
+        _31_num = (a)[(int)(_30_i)];
+        if ((_31_num).Sign == 0) {
+          _29_temp = Dafny.Sequence<byte>.Concat(_29_temp, Dafny.Sequence<byte>.FromElements((byte)(48)));
+        } else {
+          Dafny.ISequence<byte> _32_digits;
+          Dafny.ISequence<byte> _out23;
+          _out23 = __default.ConvertIntToByteSeq(_31_num);
+          _32_digits = _out23;
+          _29_temp = Dafny.Sequence<byte>.Concat(_29_temp, _32_digits);
+          if ((_30_i) != ((new BigInteger((a).Length)) - (BigInteger.One))) {
+            _29_temp = Dafny.Sequence<byte>.Concat(Dafny.Sequence<byte>.Concat(_29_temp, Dafny.Sequence<byte>.FromElements((byte)(13))), Dafny.Sequence<byte>.FromElements((byte)(10)));
+          }
+        }
+      }
+      byte[] _out24;
+      _out24 = __default.ConvertByteSeqToByteArray(_29_temp);
+      b = _out24;
+      b = b;
+      return b;
+      return b;
+    }
+    public static byte[] ConvertByteSeqToByteArray(Dafny.ISequence<byte> s)
+    {
+      byte[] a = new byte[0];
+      byte[] _nw1 = new byte[Dafny.Helpers.ToIntChecked(new BigInteger((s).Count), "array size exceeds memory limit")];
+      a = _nw1;
+      BigInteger _hi4 = new BigInteger((s).Count);
+      for (BigInteger _33_i = BigInteger.Zero; _33_i < _hi4; _33_i++) {
+        (a)[(int)((_33_i))] = (s).Select(_33_i);
+      }
+      a = a;
+      return a;
+      return a;
+    }
+    public static BigInteger[] ConvertIntSeqToIntArray(Dafny.ISequence<BigInteger> s)
+    {
+      BigInteger[] a = new BigInteger[0];
+      BigInteger[] _nw2 = new BigInteger[Dafny.Helpers.ToIntChecked(new BigInteger((s).Count), "array size exceeds memory limit")];
+      a = _nw2;
+      BigInteger _hi5 = new BigInteger((s).Count);
+      for (BigInteger _34_i = BigInteger.Zero; _34_i < _hi5; _34_i++) {
+        (a)[(int)((_34_i))] = (s).Select(_34_i);
+      }
+      a = a;
+      return a;
+      return a;
+    }
+    public static void FindKSmallest(BigInteger[] A, BigInteger K, out BigInteger s, out BigInteger l, out bool done)
+    {
+      s = BigInteger.Zero;
+      l = BigInteger.Zero;
+      done = false;
+      BigInteger _rhs0 = BigInteger.Zero;
+      BigInteger _rhs1 = new BigInteger((A).Length);
+      bool _rhs2 = (new BigInteger((A).Length)) <= (BigInteger.One);
+      s = _rhs0;
+      l = _rhs1;
+      done = _rhs2;
+      while (!(done)) {
+        BigInteger _35_X;
+        _35_X = (A)[(int)((K) - (BigInteger.One))];
+        BigInteger _36_m;
+        BigInteger _37_n;
+        BigInteger _out25;
+        BigInteger _out26;
+        __default.Partition(A, s, l, _35_X, out _out25, out _out26);
+        _36_m = _out25;
+        _37_n = _out26;
+        if ((_37_n) < (K)) {
+          s = _37_n;
+        } else if (((_36_m) < (K)) && ((K) <= (_37_n))) {
+          BigInteger _rhs3 = _36_m;
+          BigInteger _rhs4 = _37_n;
+          bool _rhs5 = true;
+          s = _rhs3;
+          l = _rhs4;
+          done = _rhs5;
+        } else if ((K) <= (_36_m)) {
+          l = _36_m;
+        }
+      }
+    }
+    public static void Partition(BigInteger[] A, BigInteger s, BigInteger l, BigInteger X, out BigInteger m, out BigInteger n)
+    {
+      m = BigInteger.Zero;
+      n = BigInteger.Zero;
+      BigInteger _rhs6 = s;
+      BigInteger _rhs7 = s;
+      m = _rhs6;
+      n = _rhs7;
+      BigInteger _38_x;
+      _38_x = l;
+      while ((n) < (_38_x)) {
+        if (((A)[(int)(n)]) < (X)) {
+          BigInteger _rhs8 = (A)[(int)(n)];
+          BigInteger _rhs9 = (A)[(int)(m)];
+          BigInteger[] _lhs0 = A;
+          BigInteger _lhs1 = m;
+          BigInteger[] _lhs2 = A;
+          BigInteger _lhs3 = n;
+          _lhs0[(int)(_lhs1)] = _rhs8;
+          _lhs2[(int)(_lhs3)] = _rhs9;
+          BigInteger _rhs10 = (m) + (BigInteger.One);
+          BigInteger _rhs11 = (n) + (BigInteger.One);
+          m = _rhs10;
+          n = _rhs11;
+        } else if (((A)[(int)(n)]) == (X)) {
+          n = (n) + (BigInteger.One);
+        } else {
+          _38_x = (_38_x) - (BigInteger.One);
+          BigInteger _rhs12 = (A)[(int)(_38_x)];
+          BigInteger _rhs13 = (A)[(int)(n)];
+          BigInteger[] _lhs4 = A;
+          BigInteger _lhs5 = n;
+          BigInteger[] _lhs6 = A;
+          BigInteger _lhs7 = _38_x;
+          _lhs4[(int)(_lhs5)] = _rhs12;
+          _lhs6[(int)(_lhs7)] = _rhs13;
+        }
       }
     }
   }
@@ -6146,8 +6535,8 @@ namespace _module {
       return _TYPE;
     }
     public static bool _Is(int __source) {
-      BigInteger _19_i = new BigInteger(__source);
-      return ((_19_i).Sign != -1) && ((_19_i) < (new BigInteger(2147483648L)));
+      BigInteger _39_i = new BigInteger(__source);
+      return ((_39_i).Sign != -1) && ((_39_i) < (new BigInteger(2147483648L)));
     }
   }
 
