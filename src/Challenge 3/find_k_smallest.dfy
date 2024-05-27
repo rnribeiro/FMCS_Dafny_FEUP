@@ -11,51 +11,59 @@ method {:main} Main(ghost env:HostEnvironment?)
   requires env != null && env.Valid() && env.ok.ok()
   modifies env.ok, env.files
 {
-  var n := HostConstants.NumCommandLineArgs(env);
-  if n != 4 {
-    print "Usage: dotnet find_k_smallest.dll <number> <sourcefile> <destinationfile>\n";
+  // - First step -
+  // Read the command line
+
+  // Check the number of arguments
+  var numArgs := HostConstants.NumCommandLineArgs(env);
+
+  // If number of arguments is different than 4, print error message
+  if numArgs != 4 {
+    print "Error: Wrong number of arguments!\nUsage: dotnet find_k_smallest.dll <number> <sourcefile> <destinationfile>\n";
     return;
   }
 
   // Get command line arguments
-  var num_arg := HostConstants.GetCommandLineArg(1 as uint64, env);
-  var src_file_arg := HostConstants.GetCommandLineArg(2 as uint64, env);
-  var dst_file_arg := HostConstants.GetCommandLineArg(3 as uint64, env);
+  var argNumber := HostConstants.GetCommandLineArg(1, env);
+  var sourceFile := HostConstants.GetCommandLineArg(2, env);
+  var destFile := HostConstants.GetCommandLineArg(3, env);
 
   // Convert command line arguments to appropriate types
-  var K_char_array := ConvertCharSeqToCharArray(num_arg[..]);
-  if !ValidKArgArray(K_char_array) {
-    print "Error: Invalid <number> argument.\n";
+  if !IsInteger(argNumber) {
+    print "Error: Wrong argument type! Argument 1 must be of type int!\nUsage: number sourceFile destFile\n";
     return;
   }
-  var K := ConvertCharArrayToInt(K_char_array);
+  var K := ConvertCharArrayToInt(argNumber);
 
-  var src_file := ConvertCharSeqToCharArray(src_file_arg[..]);
-  var dst_file := ConvertCharSeqToCharArray(dst_file_arg[..]);
-
-  // Check if source file exists, if not, terminate
-  var src_exists := FileStream.FileExists(src_file, env);
-  if !src_exists {
-    print "Error: Source file does not exist.\n";
+  // Verify if source file exists
+  var sourceFileExists := FileStream.FileExists(sourceFile, env);
+  if !sourceFileExists {
+    print "Error: Source file does not exist!\n";
     return;
   }
 
+  // Verify argument 3 - destination file
   // Check if destination file exists, if so, terminate
-  var dst_exists := FileStream.FileExists(dst_file, env);
-  if dst_exists {
+  var destFileExists := FileStream.FileExists(destFile, env);
+  if destFileExists {
     print "Error: Destination file already exists.\n";
     return;
   }
 
-  // Open source file, if not possible, terminate
-  var src_file_stream_ok, src_file_stream := FileStream.Open(src_file, env);
-  if !src_file_stream_ok {
-    print "Error: Could not open source file.\n";
+  // - Second step -
+  // Open, read from and close the source file
+  // Open source file
+
+  var ok: bool;
+  var sourceFileStream: FileStream?;
+  ok, sourceFileStream := FileStream.Open(sourceFile, env);
+  if !ok {
+    print "Error: Could not open source file!\n";
     return;
   }
 
   // Determine source file length, if not possible, terminate
-  var success_len, src_len := FileStream.FileLength(src_file, env);
+  var success_len, src_len := FileStream.FileLength(sourceFile, env);
   if !success_len {
     print "Error: Unable to determine source file length.\n";
     return;
@@ -68,11 +76,12 @@ method {:main} Main(ghost env:HostEnvironment?)
 
   // Read source file, if not possible, terminate
   var src_buffer := new byte[src_len];
-  var ok_read := src_file_stream.Read(0 as nat32, src_buffer, 0, src_len);
-  if !ok_read {
+  ok := sourceFileStream.Read(0 as nat32, src_buffer, 0, src_len);
+  if !ok {
     print "Error: Unable to read from source file.\n";
     return;
   }
+
   // Check if the number is within the range of the array
   if src_buffer.Length == 0 {
     print "Error: Source file is empty.\n";
@@ -80,66 +89,74 @@ method {:main} Main(ghost env:HostEnvironment?)
   }
 
   // Convert src_buffer to array<int>
-  var src_array := ConvertByteArrayToIntArray(src_buffer);
+  var numbers := ConvertByteArrayToIntArray(src_buffer);
 
   // Close source file
-  var ok_src_close := src_file_stream.Close();
-  if !ok_src_close {
+  ok := sourceFileStream.Close();
+  if !ok {
     print "Error: Unable to close source file.\n";
     return;
   }
 
+  // // - Third step -
+  // // Apply method from Challenge 2
+  // TODO: Call the method to find the Kth smallest number and reorder the array accordingly
 
-  /*
-    TODO: Call the method to find the Kth smallest number and reorder the array accordingly
-  */
 
-  // Output array to destination file
+  // - Forth and final step -
+  // Create, write to and close destination file
 
-  // Convert src_array to array<byte>
-  var dst_buffer := ConvertIntArrayToByteArray(src_array);
-
-  // Open destination file
-  var dst_file_stream_ok, dst_file_stream := FileStream.Open(dst_file, env);
-  if !dst_file_stream_ok {
-    print "Error: Could not open destination file.\n";
+  var destFileStream: FileStream?;
+  ok, destFileStream := FileStream.Open(destFile, env);
+  // Create and open destination file
+  if !ok {
+    print "Error: Could not create destination file!\n";
     return;
   }
 
+  // Convert src_array to array<byte>
+  var numbersByteArray := ConvertIntArrayToByteArray(numbers);
+
   // Ensure dst_buffer.Length is within the range of int32
-  if dst_buffer.Length > 0x7FFFFFFF  {
+  if numbersByteArray.Length > 0x7FFFFFFF  {
     print "Error: Destination file size is too large.\n";
     return;
   }
-  if dst_buffer.Length == 0 {
+  if numbersByteArray.Length == 0 {
     print "Error: Empty output.\n";
     return;
   }
 
   // Write to destination file
-  var ok_write := dst_file_stream.Write(0 as nat32, dst_buffer, 0, dst_buffer.Length as int32);
-  if !ok_write {
-    print "Error: Unable to write to destination file.\n";
+  ok := destFileStream.Write(0, numbersByteArray, 0, numbersByteArray.Length as int32);
+  if !ok {
+    print "Error: Could not write to destination file!\n";
     return;
   }
 
-  // Close destination file
-  var ok_dst_close := dst_file_stream.Close();
-  if !ok_dst_close {
-    print "Error: Unable to close destination file.\n";
+  // Close the destination file
+  ok := destFileStream.Close();
+  if !ok {
+    print "Error: Could not close destination file!\n";
     return;
   }
 
   print "File copy successful.\n";
 }
 
-predicate ValidKArgArray(a: array<char>)
-reads a
+
+
+// Predicate to check if a array<char> contains only integers (ASCII encoded)
+// And, if the array contains only one element, it must be a digit
+predicate IsInteger(chars: array<char>)
+  reads chars
 {
-  (forall i: int :: 0 <= i < a.Length ==> '0' <= a[i] <= '9')
+  (forall i: int :: 0 <= i < chars.Length ==> '0' <= chars[i] <= '9')
   &&
-  (a.Length == 1 ==> 0 < a[0] as int - 48 <= 9) 
+  (chars.Length == 1 ==> 0 < chars[0] as int - 48 <= 9)
 }
+
+
 
 /*
 Method to convert a array<char> to an integer
@@ -150,18 +167,39 @@ Example:
     ASCII code for '1', '2', '3' are 49, 50, 51, respectively
 */
 method ConvertCharArrayToInt(a: array<char>) returns (b: int)
-requires ValidKArgArray(a)
+  requires IsInteger(a)
 {
-    var temp: seq<int> := [];
-    // Convert K char array to int
-    for i := 0 to a.Length {
-      temp := temp + [a[i] as int - 48];
-    }
-    var K_int := 0;
-    for i := 0 to |temp| {
-      K_int := K_int * 10 + temp[i];
-    }
-    b := K_int;
+  var temp: seq<int> := [];
+  // Convert K char array to int
+  for i := 0 to a.Length {
+    temp := temp + [a[i] as int - 48];
+  }
+
+  b := ConvertDigitsSeqToInt(temp);
+}
+
+
+/*
+Method to convert a seq<int> to an integer
+The input seq<int> contains digits of a number
+The output integer is the actual integer
+Example: 
+    a = [1, 2, 3] outputs b = 123
+*/
+method ConvertDigitsSeqToInt(s: seq<int>) returns (b: int)
+{
+  // Initialize num to 0
+  var num := 0;
+  // Loop through temp's digits to form the number
+  for i := 0 to |s| {
+    // Example: temp = [1, 2, 3]
+    // num = 0
+    // num = 0 * 10 + 1 = 1
+    // num = 1 * 10 + 2 = 12
+    // num = 12 * 10 + 3 = 123
+    num := num * 10 + s[i];
+  }
+  b := num;
 }
 
 
@@ -194,17 +232,7 @@ method ConvertByteArrayToIntArray(a:array<byte>) returns (b: array<int>)
       // If the character is not a digit and temp is not empty,
       // convert temp to an integer and add it to result
       if |temp| > 0 {
-        // Initialize num to 0
-        var num := 0;
-        // Loop through temp's digits to form the number
-        // Example: temp = [1, 2, 3]
-        // num = 0
-        // num = 0 * 10 + 1 = 1
-        // num = 1 * 10 + 2 = 12
-        // num = 12 * 10 + 3 = 123
-        for j := 0 to |temp| {
-          num := num * 10 + temp[j];
-        }
+        var num := ConvertDigitsSeqToInt(temp);
         // Add the number to result
         result := result + [num];
         // Reset temp
@@ -215,10 +243,7 @@ method ConvertByteArrayToIntArray(a:array<byte>) returns (b: array<int>)
 
   // If temp is not empty at the end of the loop, convert temp to an integer and add it to result
   if |temp| > 0 {
-    var num := 0;
-    for j := 0 to |temp| {
-      num := num * 10 + temp[j];
-    }
+    var num := ConvertDigitsSeqToInt(temp);
     result := result + [num];
     temp := [];
   }
@@ -227,6 +252,32 @@ method ConvertByteArrayToIntArray(a:array<byte>) returns (b: array<int>)
   b := ConvertIntSeqToIntArray(result);
 
   return b;
+}
+
+/*
+Method to convert an integer into a sequence of ASCII encoded integers (bytes)
+The method converts the integer to ASCII encoded integers
+Example: a = 123 outputs b = [49, 50, 51]
+ASCII code for '1', '2', '3' are 49, 50, 51, respectively
+*/
+method ConvertIntToByteSeq(a: int) returns (b: seq<byte>)
+{
+  var digits: seq<byte> := [];
+  var num := a;
+  // Convert the number to ASCII encoded integers
+  // Example: num = 123
+  // digits = []
+  // digits = [123 % 10 + 48] + [] = [51] + [] = [51] (= ['3'])
+  // num = 123 / 10 = 12
+  // digits = [12 % 10 + 48] + [51] = [50] + [51] = [50, 51] (= ['2', '3'])
+  // num = 12 / 10 = 1
+  // digits = [1 % 10 + 48] + [50, 51] = [49] + [50, 51] = [49, 50, 51] (= ['1', '2', '3'])
+  while num > 0 {
+    digits := [(num % 10) as byte + 48 as byte] + digits; // Convert digit to ASCII
+    num := num / 10;
+  }
+
+  return digits;
 }
 
 // Method to convert a array<int> to a array<byte>
@@ -243,20 +294,7 @@ method ConvertIntArrayToByteArray(a: array<int>) returns (b: array<byte>)
     if num == 0 {
       temp := temp + [48 as byte]; // ASCII code for '0'
     } else {
-      // Convert the number to ASCII encoded integers
-      var digits: seq<byte> := [];
-      // Loop through the digits of the number
-      // Example: num = 123
-      // digits = []
-      // digits = [123 % 10 + 48] + [] = [51] + [] = [51] (= ['3'])
-      // num = 123 / 10 = 12
-      // digits = [12 % 10 + 48] + [51] = [50] + [51] = [50, 51] (= ['2', '3'])
-      // num = 12 / 10 = 1
-      // digits = [1 % 10 + 48] + [50, 51] = [49] + [50, 51] = [49, 50, 51] (= ['1', '2', '3'])
-      while num > 0 {
-        digits := [(num % 10) as byte + 48 as byte] + digits; // Convert digit to ASCII
-        num := num / 10;
-      }
+      var digits := ConvertIntToByteSeq(num);
       // Add the digits to temp
       temp := temp + digits;
       // Add '\r' and '\n' to temp if the number is not the last number
@@ -281,17 +319,6 @@ method ConvertByteSeqToByteArray(s: seq<byte>) returns (a: array<byte>)
     a[i] := s[i];
   }
 
-  return a;
-}
-
-// Method to convert a seq<char> to an array<char>
-method ConvertCharSeqToCharArray(s:seq<char>) returns (a: array<char>)
-  ensures a.Length == |s|
-{
-  a := new char[|s|];
-  for i := 0 to |s| {
-    a[i] := s[i];
-  }
   return a;
 }
 
