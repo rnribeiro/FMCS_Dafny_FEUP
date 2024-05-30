@@ -11,6 +11,8 @@ include "../Challenge 2/Find.dfy"
 method {:main} Main(ghost env:HostEnvironment?)
   requires env != null && env.Valid() && env.ok.ok()
   modifies env.ok, env.files
+  ensures env.files == old(env.files)
+  ensures env.Valid()
 {
   // - First step -
   // Read the command line
@@ -102,7 +104,7 @@ method {:main} Main(ghost env:HostEnvironment?)
   // // - Third step -
   // // Apply method from Challenge 2
 
-  // numbers := FindKthSmallest(numbers, K);
+  // var l, s := FindKthSmallest(numbers, K);
 
 
   // - Forth and final step -
